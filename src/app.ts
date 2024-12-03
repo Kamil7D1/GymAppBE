@@ -1,10 +1,16 @@
-import express, { Request, Response } from 'express';
+import express, { Application } from 'express';
+import cors from 'cors';
+import { authRouter } from './routes/auth.routes';
 
-const app = express();
+const app: Application = express();
+
+app.use(cors());
+app.use(express.json());
+app.use('/api/auth', authRouter);
+
 const PORT = process.env.PORT || 3000;
-
-app.get('/', (req: Request, res: Response) => {
-    res.send('Hello, TypeScript with Express!');
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
 
-app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+export { app };
