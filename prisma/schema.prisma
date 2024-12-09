@@ -1,3 +1,5 @@
+// schema.prisma
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -8,41 +10,82 @@ generator client {
 }
 
 model User {
-  id               Int               @id @default(autoincrement())
-  email            String            @unique
-  password         String
-  firstName        String
-  lastName         String
-  role             Role              @default(USER)
-  membershipType   Membership?
-  trainingSessions TrainingSession[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-}
+  id             Int         @id @default(autoincrement())
+  email          String      @unique
+  password       String
+  firstName      String
+  lastName       String
+  role           Role        @default(USER)
+  membershipType Membership?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-model Trainer {
-  id               Int               @id @default(autoincrement())
-  email            String            @unique
-  firstName        String
-  lastName         String
-  specialization   String
-  trainingSessions TrainingSession[]
+  // Relacje do sesji treningowych
+  conductedSessions TrainingSession[] @relation("TrainerSessions")
+  bookedSessions    TrainingSession[] @relation("UserSessions")
+
+  // Relacje do sesji cyklicznych
+  conductedRecurringSessions    RecurringSession[] @relation("TrainerRecurringSessions")
+  participatedRecurringSessions RecurringSession[] @relation("UserRecurringSessions")
+
+  // Relacje do treningów personalnych
+  conductedPersonalTrainings PersonalTraining[] @relation("TrainerPersonalTrainings")
+  bookedPersonalTrainings    PersonalTraining[] @relation("ClientPersonalTrainings")
+
+  // Pola dla trenerów
+  pricePerSession Float?
+  specialization  String?
+  description     String?
 }
 
 model TrainingSession {
-  id        Int      @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
+  title           String
+  date            DateTime
+  startTime       String
+  endTime         String
+  maxParticipants Int
+  isRecurring     Boolean  @default(false)
+  trainerId       Int
+  trainer         User     @relation("TrainerSessions", fields: [trainerId], references: [id])
+  participants    User[]   @relation("UserSessions")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RecurringSession {
+  id              Int     @id @default(autoincrement())
+  title           String
+  dayOfWeek       Int
+  startTime       String
+  endTime         String
+  maxParticipants Int
+  trainerId       Int
+  active          Boolean @default(true)
+  trainer         User    @relation("TrainerRecurringSessions", fields: [trainerId], references: [id])
+  participants    User[]  @relation("UserRecurringSessions")
+}
+
+model PersonalTraining {
+  id        Int            @id @default(autoincrement())
   date      DateTime
-  userId    Int
+  time      String
+  message   String?
+  status    TrainingStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+
   trainerId Int
-  user      User     @relation(fields: [userId], references: [id])
-  trainer   Trainer  @relation(fields: [trainerId], references: [id])
+  trainer   User @relation("TrainerPersonalTrainings", fields: [trainerId], references: [id])
+
+  clientId Int
+  client   User @relation("ClientPersonalTrainings", fields: [clientId], references: [id])
 }
 
 model Membership {
   id        Int      @id @default(autoincrement())
   type      String
   price     Decimal
-  duration  Int // in days
+  duration  Int
   userId    Int      @unique
   user      User     @relation(fields: [userId], references: [id])
   startDate DateTime @default(now())
@@ -53,4 +96,11 @@ enum Role {
   USER
   ADMIN
   TRAINER
+}
+
+enum TrainingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }

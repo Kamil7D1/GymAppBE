@@ -21,7 +21,7 @@ export const register: RequestHandler = async (req: Request, res: Response): Pro
         });
 
         const token = jwt.sign(
-            { id: user.id, email: user.email },
+            { id: user.id, email: user.email, role: user.role },
             process.env.JWT_SECRET!,
             { expiresIn: '24h' }
         );
@@ -49,7 +49,7 @@ export const login: RequestHandler = async (req: Request, res: Response): Promis
         }
 
         const token = jwt.sign(
-            { id: user.id, email: user.email },
+            { id: user.id, email: user.email, role: user.role },
             process.env.JWT_SECRET!,
             { expiresIn: '24h' }
         );

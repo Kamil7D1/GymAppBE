@@ -1,12 +1,19 @@
-import { Request, Response, NextFunction } from 'express';
+import { RequestHandler  } from 'express';
 import jwt from 'jsonwebtoken';
 
-export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
+interface JwtUser {
+    id: number;
+    email: string;
+    role: 'USER' | 'TRAINER' | 'ADMIN';
+}
+
+export const requireAuth: RequestHandler = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-        return res.status(401).json({ error: "Access denied" });
+        res.status(401).json({ error: "Access denied" });
+        return;
     }
 
     try {
@@ -16,4 +23,15 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
     } catch (error) {
         res.status(403).json({ error: "Invalid token" });
     }
+};
+
+export const requireTrainerRole: RequestHandler = (req, res, next) => {
+    const user = req.user as JwtUser;
+
+    if (user.role !== 'TRAINER') {
+        res.status(403).json({ error: "Trainer role required" });
+        return;
+    }
+
+    next();
 };

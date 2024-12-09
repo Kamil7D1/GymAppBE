@@ -21,6 +21,9 @@
     "jsonwebtoken": "^9.0.2",
     "save-dev": "^0.0.1-security"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "devDependencies": {
     "@eslint/js": "^9.16.0",
     "@types/bcrypt": "^5.0.2",
