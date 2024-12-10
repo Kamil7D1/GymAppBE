@@ -5,7 +5,41 @@ const prisma = new PrismaClient();
 
 async function main() {
     const hashedPassword = await bcrypt.hash('trainerPassword123', 10);
+    const userHashedPassword = await bcrypt.hash('userPassword123', 10);
 
+    // Dodajemy zwykłych użytkowników
+    const users = [
+        {
+            email: 'jan.kowalski@example.com',
+            password: userHashedPassword,
+            firstName: 'Jan',
+            lastName: 'Kowalski',
+            role: Role.USER
+        },
+        {
+            email: 'anna.nowak@example.com',
+            password: userHashedPassword,
+            firstName: 'Anna',
+            lastName: 'Nowak',
+            role: Role.USER
+        },
+        {
+            email: 'tomasz.wozniak@example.com',
+            password: userHashedPassword,
+            firstName: 'Tomasz',
+            lastName: 'Woźniak',
+            role: Role.USER
+        }
+    ];
+
+    // Dodajemy użytkowników
+    for (const user of users) {
+        await prisma.user.create({
+            data: user
+        });
+    }
+
+    // Istniejący kod dla trenerów
     const trainers = [
         {
             email: 'adam.kowalski@gym.com',

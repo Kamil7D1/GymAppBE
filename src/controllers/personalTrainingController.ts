@@ -1,6 +1,6 @@
 // controllers/personalTrainingController.ts
 import { RequestHandler } from 'express';
-import { PrismaClient } from '@prisma/client';
+import {PrismaClient, Role, TrainingStatus} from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -15,11 +15,10 @@ export const bookPersonalTraining: RequestHandler = async (req, res): Promise<vo
         const user = req.user as JwtUser;
         const { trainerId, date, time, message } = req.body;
 
-        // Sprawdź czy trener istnieje
         const trainer = await prisma.user.findUnique({
             where: {
                 id: Number(trainerId),
-                role: 'TRAINER'
+                role: Role.TRAINER
             }
         });
 
@@ -28,32 +27,91 @@ export const bookPersonalTraining: RequestHandler = async (req, res): Promise<vo
             return;
         }
 
-        // Sprawdź czy termin jest dostępny
-        const existingBooking = await prisma.personalTraining.findFirst({
-            where: {
-                trainerId: Number(trainerId),
-                date: new Date(date),
-                time: time,
-                status: {
-                    in: ['PENDING', 'CONFIRMED']
-                }
-            }
-        });
+        const bookingDate = new Date(date);
+        const [bookingHour, bookingMinute] = time.split(':').map(Number);
 
-        if (existingBooking) {
-            res.status(400).json({ error: "This time slot is already booked" });
+        // Konwertuj wybrany czas na minuty dla łatwiejszego porównania
+        const selectedTimeInMinutes = bookingHour * 60 + bookingMinute;
+
+        if (selectedTimeInMinutes + 60 > 22 * 60) {
+            res.status(400).json({
+                error: "Training session cannot end after 22:00"
+            });
             return;
         }
 
-        // Utwórz rezerwację
+        // Sprawdź zajęcia grupowe trenera z uwzględnieniem 30-minutowego buforu
+        const groupSessions = await prisma.trainingSession.findMany({
+            where: {
+                trainerId: Number(trainerId),
+                date: bookingDate,
+            },
+            select: {
+                startTime: true,
+                endTime: true
+            }
+        });
+
+        // Sprawdź czy wybrany czas nie koliduje z zajęciami grupowymi (uwzględniając bufor)
+        for (const session of groupSessions) {
+            const [startHour, startMinute] = session.startTime.split(':').map(Number);
+            const [endHour, endMinute] = session.endTime.split(':').map(Number);
+
+            const sessionStartInMinutes = startHour * 60 + startMinute;
+            const sessionEndInMinutes = endHour * 60 + endMinute;
+
+            // Sprawdź czy wybrany czas jest w zakresie 30 minut przed rozpoczęciem lub po zakończeniu zajęć
+            if (
+                (selectedTimeInMinutes >= sessionStartInMinutes - 30 && selectedTimeInMinutes <= sessionEndInMinutes) ||
+                (selectedTimeInMinutes >= sessionStartInMinutes && selectedTimeInMinutes <= sessionEndInMinutes + 30)
+            ) {
+                res.status(400).json({
+                    error: "Selected time is too close to trainer's group session. Please allow at least 30 minutes between sessions."
+                });
+                return;
+            }
+        }
+
+        // Sprawdź treningi personalne z uwzględnieniem 30-minutowego buforu
+        const personalTrainings = await prisma.personalTraining.findMany({
+            where: {
+                trainerId: Number(trainerId),
+                date: bookingDate,
+                status: {
+                    in: [TrainingStatus.PENDING, TrainingStatus.CONFIRMED]
+                }
+            },
+            select: {
+                time: true
+            }
+        });
+
+        // Sprawdź kolizje z innymi treningami personalnymi
+        for (const training of personalTrainings) {
+            const [trainingHour, trainingMinute] = training.time.split(':').map(Number);
+            const trainingTimeInMinutes = trainingHour * 60 + trainingMinute;
+
+            // Zakładamy, że trening personalny trwa godzinę
+            if (
+                Math.abs(selectedTimeInMinutes - trainingTimeInMinutes) < 30 ||
+                Math.abs(selectedTimeInMinutes - (trainingTimeInMinutes + 60)) < 30
+            ) {
+                res.status(400).json({
+                    error: "Selected time is too close to another personal training. Please allow at least 30 minutes between sessions."
+                });
+                return;
+            }
+        }
+
+        // Jeśli wszystkie walidacje przeszły, utwórz rezerwację
         const booking = await prisma.personalTraining.create({
             data: {
                 trainerId: Number(trainerId),
                 clientId: user.id,
-                date: new Date(date),
+                date: bookingDate,
                 time: time,
                 message: message,
-                status: 'PENDING'
+                status: TrainingStatus.PENDING
             }
         });
 

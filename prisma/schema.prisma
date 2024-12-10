@@ -36,6 +36,9 @@ model User {
   pricePerSession Float?
   specialization  String?
   description     String?
+  workoutPlans        WorkoutPlan[]
+  createdWorkoutPlans WorkoutPlan[] @relation("TrainerWorkoutPlans")
+  workoutTemplates WorkoutTemplate[] @relation("TrainerTemplates")
 }
 
 model TrainingSession {
@@ -82,14 +85,65 @@ model PersonalTraining {
 }
 
 model Membership {
-  id        Int      @id @default(autoincrement())
-  type      String
-  price     Decimal
-  duration  Int
-  userId    Int      @unique
-  user      User     @relation(fields: [userId], references: [id])
-  startDate DateTime @default(now())
-  endDate   DateTime
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  user        User      @relation(fields: [userId], references: [id])
+  type        MembershipType
+  startDate   DateTime  @default(now())
+  endDate     DateTime
+  price       Float
+  status      MembershipStatus @default(ACTIVE)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model WorkoutPlan {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  trainerId   Int?
+  trainer     User?     @relation("TrainerWorkoutPlans", fields: [trainerId], references: [id])
+  exercises   Exercise[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Exercise {
+  id            Int         @id @default(autoincrement())
+  name          String
+  sets          Int
+  reps          Int
+  weight        Float?
+  notes         String?
+  workoutPlanId Int
+  workoutPlan   WorkoutPlan @relation(fields: [workoutPlanId], references: [id])
+  orderIndex    Int         // Do sortowania ćwiczeń
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model WorkoutTemplate {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  trainerId   Int
+  trainer     User      @relation("TrainerTemplates", fields: [trainerId], references: [id])
+  exercises   TemplateExercise[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model TemplateExercise {
+  id              Int             @id @default(autoincrement())
+  name            String
+  sets            Int
+  reps            Int
+  notes           String?
+  orderIndex      Int
+  templateId      Int
+  template        WorkoutTemplate @relation(fields: [templateId], references: [id])
 }
 
 enum Role {
@@ -103,4 +157,16 @@ enum TrainingStatus {
   CONFIRMED
   CANCELLED
   COMPLETED
+}
+
+enum MembershipType {
+  MONTHLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum MembershipStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
 }
