@@ -7,7 +7,119 @@ async function main() {
     const hashedPassword = await bcrypt.hash('trainerPassword123', 10);
     const userHashedPassword = await bcrypt.hash('userPassword123', 10);
 
-    // Dodajemy zwykłych użytkowników
+    const exercises = [
+        // Klatka piersiowa
+        {
+            name: 'Wyciskanie sztangi na ławce płaskiej',
+            category: 'Klatka piersiowa',
+            description: 'Klasyczne ćwiczenie na klatkę piersiową ze sztangą'
+        },
+        {
+            name: 'Rozpiętki ze sztangielkami',
+            category: 'Klatka piersiowa',
+            description: 'Ćwiczenie izolowane na mięśnie klatki piersiowej'
+        },
+        {
+            name: 'Wyciskanie sztangielek na ławce skośnej',
+            category: 'Klatka piersiowa',
+            description: 'Ćwiczenie angażujące górną część klatki piersiowej'
+        },
+
+        // Plecy
+        {
+            name: 'Martwy ciąg',
+            category: 'Plecy',
+            description: 'Złożone ćwiczenie angażujące całe plecy i nogi'
+        },
+        {
+            name: 'Podciąganie na drążku',
+            category: 'Plecy',
+            description: 'Ćwiczenie z masą własnego ciała na plecy i biceps'
+        },
+        {
+            name: 'Wiosłowanie sztangą',
+            category: 'Plecy',
+            description: 'Ćwiczenie na rozwój mięśni pleców'
+        },
+
+        // Nogi
+        {
+            name: 'Przysiad ze sztangą',
+            category: 'Nogi',
+            description: 'Podstawowe ćwiczenie na nogi'
+        },
+        {
+            name: 'Wykroki',
+            category: 'Nogi',
+            description: 'Ćwiczenie na nogi i pośladki'
+        },
+        {
+            name: 'Prostowanie nóg w siadzie',
+            category: 'Nogi',
+            description: 'Ćwiczenie izolowane na mięsień czworogłowy uda'
+        },
+
+        // Barki
+        {
+            name: 'Wyciskanie sztangi nad głowę',
+            category: 'Barki',
+            description: 'Podstawowe ćwiczenie na rozwój mięśni naramiennych'
+        },
+        {
+            name: 'Unoszenie sztangielek bokiem',
+            category: 'Barki',
+            description: 'Ćwiczenie izolowane na środkową część mięśnia naramiennego'
+        },
+
+        // Biceps
+        {
+            name: 'Uginanie ramion ze sztangą',
+            category: 'Biceps',
+            description: 'Klasyczne ćwiczenie na biceps'
+        },
+        {
+            name: 'Uginanie ramion ze sztangielkami naprzemiennie',
+            category: 'Biceps',
+            description: 'Ćwiczenie na biceps wykonywane naprzemiennie'
+        },
+
+        // Triceps
+        {
+            name: 'Wyciskanie francuskie',
+            category: 'Triceps',
+            description: 'Ćwiczenie izolowane na triceps'
+        },
+        {
+            name: 'Prostowanie ramion na wyciągu',
+            category: 'Triceps',
+            description: 'Ćwiczenie na triceps z użyciem wyciągu'
+        },
+
+        // Brzuch
+        {
+            name: 'Spięcia brzucha',
+            category: 'Brzuch',
+            description: 'Podstawowe ćwiczenie na mięśnie brzucha'
+        },
+        {
+            name: 'Plank',
+            category: 'Brzuch',
+            description: 'Ćwiczenie izometryczne na core'
+        },
+        {
+            name: 'Unoszenie nóg w zwisie',
+            category: 'Brzuch',
+            description: 'Zaawansowane ćwiczenie na dolne partie brzucha'
+        }
+    ];
+
+    console.log('Dodawanie ćwiczeń...');
+    for (const exercise of exercises) {
+        await prisma.baseExercise.create({
+            data: exercise
+        });
+    }
+
     const users = [
         {
             email: 'jan.kowalski@example.com',

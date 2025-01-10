@@ -9,7 +9,6 @@ import {
 
 export const personalTrainingRouter = Router();
 
-// Rezerwacje treningów personalnych
 personalTrainingRouter.post('/book', requireAuth, bookPersonalTraining);
 personalTrainingRouter.get('/my-bookings', requireAuth, getClientBookings);
 personalTrainingRouter.get('/trainer-bookings', requireAuth, getTrainerBookings);

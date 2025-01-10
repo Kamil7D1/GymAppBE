@@ -1,29 +1,32 @@
-import {RequestHandler} from "express";
-import {Prisma, PrismaClient, Role, TrainingStatus} from "@prisma/client";
+import { Request, RequestHandler } from "express";
+import { PrismaClient, Role, TrainingStatus } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-interface JwtUser {
-    id: number;
-    email: string;
-}
-
-interface SessionData {
-    title: string;
-    date: string;
-    startTime: string;
-    endTime: string;
-    maxParticipants: number;
-    isRecurring: boolean;
+interface RequestWithUser extends Request {
+    user?: {
+        id: string;
+        email?: string;
+    };
 }
 
 interface Booking {
     time: string;
 }
 
-export const addSession: RequestHandler = async (req, res): Promise<void> => {
+export const addSession: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const trainer = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const trainerId = parseInt(req.user.id, 10);
+        if (isNaN(trainerId)) {
+            res.status(400).json({ error: "Invalid trainer ID" });
+            return;
+        }
+
         const { title, date, startTime, endTime, maxParticipants, isRecurring } = req.body;
 
         const sessionDate = new Date(date);
@@ -37,7 +40,7 @@ export const addSession: RequestHandler = async (req, res): Promise<void> => {
 
         const existingSession = await prisma.trainingSession.findFirst({
             where: {
-                trainerId: trainer.id,
+                trainerId: trainerId,
                 date: new Date(date),
                 OR: [
                     {
@@ -73,7 +76,7 @@ export const addSession: RequestHandler = async (req, res): Promise<void> => {
                     startTime,
                     endTime,
                     maxParticipants,
-                    trainerId: trainer.id,
+                    trainerId: trainerId,
                     isRecurring: true
                 });
             }
@@ -82,7 +85,6 @@ export const addSession: RequestHandler = async (req, res): Promise<void> => {
                 data: sessions
             });
         } else {
-            // Pojedyncza sesja
             await prisma.trainingSession.create({
                 data: {
                     title,
@@ -90,7 +92,7 @@ export const addSession: RequestHandler = async (req, res): Promise<void> => {
                     startTime,
                     endTime,
                     maxParticipants,
-                    trainerId: trainer.id,
+                    trainerId: trainerId,
                     isRecurring: false
                 }
             });
@@ -103,17 +105,31 @@ export const addSession: RequestHandler = async (req, res): Promise<void> => {
     }
 };
 
-export const getTrainerSessions: RequestHandler = async (req, res): Promise<void> => {
-    const trainer = req.user as JwtUser;
-
-    const sessions = await prisma.recurringSession.findMany({
-        where: {
-            trainerId: trainer.id,
-            active: true
+export const getTrainerSessions: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
         }
-    });
 
-    res.json(sessions);
+        const trainerId = parseInt(req.user.id, 10);
+        if (isNaN(trainerId)) {
+            res.status(400).json({ error: "Invalid trainer ID" });
+            return;
+        }
+
+        const sessions = await prisma.recurringSession.findMany({
+            where: {
+                trainerId: trainerId,
+                active: true
+            }
+        });
+
+        res.json(sessions);
+    } catch (error) {
+        console.error('Error fetching trainer sessions:', error);
+        res.status(500).json({ error: "Failed to fetch sessions" });
+    }
 };
 
 export const getTrainingSessions: RequestHandler = async (_req, res) => {
@@ -153,7 +169,7 @@ export const getTrainingSessions: RequestHandler = async (_req, res) => {
     }
 };
 
-export const getTrainers: RequestHandler = async (req, res): Promise<void> => {
+export const getTrainers: RequestHandler = async (_req, res): Promise<void> => {
     try {
         const trainers = await prisma.user.findMany({
             where: {
@@ -176,7 +192,7 @@ export const getTrainers: RequestHandler = async (req, res): Promise<void> => {
     }
 };
 
-export const getTrainerAvailability: RequestHandler = async (req, res): Promise<void> => {
+export const getTrainerAvailability: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
         const { trainerId, date } = req.params;
 

@@ -1,18 +1,31 @@
-// controllers/personalTrainingController.ts
-import { RequestHandler } from 'express';
-import {PrismaClient, Role, TrainingStatus} from '@prisma/client';
+import { Request, RequestHandler } from 'express';
+import { PrismaClient, Role, TrainingStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface JwtUser {
-    id: number;
-    email: string;
-    role: string;
+interface RequestWithUser extends Request {
+    user?: {
+        id: string;
+        email?: string;
+        role?: string;
+        firstName?: string;
+        lastName?: string;
+    };
 }
 
-export const bookPersonalTraining: RequestHandler = async (req, res): Promise<void> => {
+export const bookPersonalTraining: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const user = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const { trainerId, date, time, message } = req.body;
 
         const trainer = await prisma.user.findUnique({
@@ -30,7 +43,6 @@ export const bookPersonalTraining: RequestHandler = async (req, res): Promise<vo
         const bookingDate = new Date(date);
         const [bookingHour, bookingMinute] = time.split(':').map(Number);
 
-        // Konwertuj wybrany czas na minuty dla łatwiejszego porównania
         const selectedTimeInMinutes = bookingHour * 60 + bookingMinute;
 
         if (selectedTimeInMinutes + 60 > 22 * 60) {
@@ -40,74 +52,10 @@ export const bookPersonalTraining: RequestHandler = async (req, res): Promise<vo
             return;
         }
 
-        // Sprawdź zajęcia grupowe trenera z uwzględnieniem 30-minutowego buforu
-        const groupSessions = await prisma.trainingSession.findMany({
-            where: {
-                trainerId: Number(trainerId),
-                date: bookingDate,
-            },
-            select: {
-                startTime: true,
-                endTime: true
-            }
-        });
-
-        // Sprawdź czy wybrany czas nie koliduje z zajęciami grupowymi (uwzględniając bufor)
-        for (const session of groupSessions) {
-            const [startHour, startMinute] = session.startTime.split(':').map(Number);
-            const [endHour, endMinute] = session.endTime.split(':').map(Number);
-
-            const sessionStartInMinutes = startHour * 60 + startMinute;
-            const sessionEndInMinutes = endHour * 60 + endMinute;
-
-            // Sprawdź czy wybrany czas jest w zakresie 30 minut przed rozpoczęciem lub po zakończeniu zajęć
-            if (
-                (selectedTimeInMinutes >= sessionStartInMinutes - 30 && selectedTimeInMinutes <= sessionEndInMinutes) ||
-                (selectedTimeInMinutes >= sessionStartInMinutes && selectedTimeInMinutes <= sessionEndInMinutes + 30)
-            ) {
-                res.status(400).json({
-                    error: "Selected time is too close to trainer's group session. Please allow at least 30 minutes between sessions."
-                });
-                return;
-            }
-        }
-
-        // Sprawdź treningi personalne z uwzględnieniem 30-minutowego buforu
-        const personalTrainings = await prisma.personalTraining.findMany({
-            where: {
-                trainerId: Number(trainerId),
-                date: bookingDate,
-                status: {
-                    in: [TrainingStatus.PENDING, TrainingStatus.CONFIRMED]
-                }
-            },
-            select: {
-                time: true
-            }
-        });
-
-        // Sprawdź kolizje z innymi treningami personalnymi
-        for (const training of personalTrainings) {
-            const [trainingHour, trainingMinute] = training.time.split(':').map(Number);
-            const trainingTimeInMinutes = trainingHour * 60 + trainingMinute;
-
-            // Zakładamy, że trening personalny trwa godzinę
-            if (
-                Math.abs(selectedTimeInMinutes - trainingTimeInMinutes) < 30 ||
-                Math.abs(selectedTimeInMinutes - (trainingTimeInMinutes + 60)) < 30
-            ) {
-                res.status(400).json({
-                    error: "Selected time is too close to another personal training. Please allow at least 30 minutes between sessions."
-                });
-                return;
-            }
-        }
-
-        // Jeśli wszystkie walidacje przeszły, utwórz rezerwację
         const booking = await prisma.personalTraining.create({
             data: {
                 trainerId: Number(trainerId),
-                clientId: user.id,
+                clientId: userId,
                 date: bookingDate,
                 time: time,
                 message: message,
@@ -122,13 +70,22 @@ export const bookPersonalTraining: RequestHandler = async (req, res): Promise<vo
     }
 };
 
-export const getClientBookings: RequestHandler = async (req, res): Promise<void> => {
+export const getClientBookings: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const user = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
 
         const bookings = await prisma.personalTraining.findMany({
             where: {
-                clientId: user.id
+                clientId: userId
             },
             include: {
                 trainer: {
@@ -151,18 +108,27 @@ export const getClientBookings: RequestHandler = async (req, res): Promise<void>
     }
 };
 
-export const getTrainerBookings: RequestHandler = async (req, res): Promise<void> => {
+export const getTrainerBookings: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const user = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
 
-        if (user.role !== 'TRAINER') {
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
+        if (req.user.role !== 'TRAINER') {
             res.status(403).json({ error: "Unauthorized" });
             return;
         }
 
         const bookings = await prisma.personalTraining.findMany({
             where: {
-                trainerId: user.id
+                trainerId: userId
             },
             include: {
                 client: {
@@ -185,11 +151,21 @@ export const getTrainerBookings: RequestHandler = async (req, res): Promise<void
     }
 };
 
-export const updateBookingStatus: RequestHandler = async (req, res): Promise<void> => {
+export const updateBookingStatus: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const { bookingId } = req.params;
         const { status } = req.body;
-        const user = req.user as JwtUser;
 
         const booking = await prisma.personalTraining.findUnique({
             where: { id: Number(bookingId) },
@@ -201,7 +177,7 @@ export const updateBookingStatus: RequestHandler = async (req, res): Promise<voi
             return;
         }
 
-        if (booking.trainer.id !== user.id) {
+        if (booking.trainer.id !== userId) {
             res.status(403).json({ error: "Unauthorized" });
             return;
         }

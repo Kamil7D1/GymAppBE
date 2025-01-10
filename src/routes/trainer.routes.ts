@@ -26,5 +26,5 @@ trainerRouter.get('/list', requireAuth, getTrainers); // Lista wszystkich trener
 trainerRouter.get('/:trainerId/availability/:date', requireAuth, getTrainerAvailability);
 
 trainerRouter.get('/clients', requireAuth, requireTrainerRole, getTrainerClients);
-trainerRouter.get('/clients/:clientId/workout-plans', requireAuth, requireTrainerRole, getClientWorkoutPlans);
+trainerRouter.get('/clients/:clientId', requireAuth, requireTrainerRole, getClientWorkoutPlans);
 trainerRouter.put('/workout-plans/:planId', requireAuth, requireTrainerRole, updateClientWorkoutPlan);

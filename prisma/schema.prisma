@@ -15,10 +15,14 @@ model User {
   password       String
   firstName      String
   lastName       String
+  age       Int?
+  weight    Float?
+  height    Float?
   role           Role        @default(USER)
   membershipType Membership?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  notifications Notification[]
 
   // Relacje do sesji treningowych
   conductedSessions TrainingSession[] @relation("TrainerSessions")
@@ -39,6 +43,8 @@ model User {
   workoutPlans        WorkoutPlan[]
   createdWorkoutPlans WorkoutPlan[] @relation("TrainerWorkoutPlans")
   workoutTemplates WorkoutTemplate[] @relation("TrainerTemplates")
+  progress          Progress[]
+  exerciseProgress  ExerciseProgress[]
 }
 
 model TrainingSession {
@@ -112,16 +118,20 @@ model WorkoutPlan {
 
 model Exercise {
   id            Int         @id @default(autoincrement())
-  name          String
+  baseExercise  BaseExercise @relation(fields: [baseExerciseId], references: [id])
+  baseExerciseId Int
   sets          Int
   reps          Int
   weight        Float?
   notes         String?
   workoutPlanId Int
   workoutPlan   WorkoutPlan @relation(fields: [workoutPlanId], references: [id])
-  orderIndex    Int         // Do sortowania ćwiczeń
+  orderIndex    Int
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  @@index([workoutPlanId])
+  @@index([baseExerciseId])
 }
 
 model WorkoutTemplate {
@@ -144,6 +154,72 @@ model TemplateExercise {
   orderIndex      Int
   templateId      Int
   template        WorkoutTemplate @relation(fields: [templateId], references: [id])
+}
+
+model Notification {
+  id        Int             @id @default(autoincrement())
+  userId    Int
+  user      User           @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean        @default(false)
+  data      Json?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model Progress {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime
+  weight       Float?
+  measurements Json?
+  photos       String[]  @default([])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([date])
+}
+
+model BaseExercise {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  category    String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  progress    ExerciseProgress[]
+  exercises   Exercise[] // relacja do konkretnych ćwiczeń w planach
+}
+
+model ExerciseProgress {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseExerciseId Int
+  baseExercise  BaseExercise @relation(fields: [baseExerciseId], references: [id])
+  date          DateTime
+  weight        Float
+  reps          Int
+  sets          Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([baseExerciseId])
+  @@index([date])
+}
+
+enum NotificationType {
+  NEW_SESSION
+  CANCELLED_SESSION
+  WORKOUT_PLAN_ASSIGNED
+  MEMBERSHIP_EXPIRING
+  NEW_WORKOUT_FEEDBACK
+  SESSION_REMINDER
 }
 
 enum Role {

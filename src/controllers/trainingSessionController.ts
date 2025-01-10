@@ -1,20 +1,47 @@
-import { RequestHandler } from 'express';
-import {PrismaClient, Role} from '@prisma/client';
+import { Request, RequestHandler } from 'express';
+import { PrismaClient, Role } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface JwtUser {
-    id: number;
-    email: string;
-    role: Role;
+interface RequestWithUser extends Request {
+    user?: {
+        id: string;
+        email?: string;
+        role?: Role;
+    };
 }
-export const getTrainingSessions: RequestHandler = async (req, res): Promise<void> => {
+
+interface PersonalTrainingSession {
+    id: number;
+    trainerId: number;
+    clientId: number;
+    date: Date;
+    startTime: string;
+    endTime: string;
+    trainer: {
+        firstName: string;
+        lastName: string;
+    };
+}
+
+export const getTrainingSessions: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const user = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const sessions = await prisma.trainingSession.findMany({
+        // Pobierz zwykłe sesje treningowe
+        const groupSessions = await prisma.trainingSession.findMany({
             include: {
                 trainer: true,
                 participants: true
@@ -29,7 +56,29 @@ export const getTrainingSessions: RequestHandler = async (req, res): Promise<voi
             }
         });
 
-        const formattedSessions = sessions.map(session => ({
+        // Pobierz sesje personalne
+        const personalSessions = await prisma.personalTraining.findMany({
+            include: {
+                trainer: true,
+                client: true
+            },
+            where: {
+                date: {
+                    gte: today
+                },
+                status: 'CONFIRMED',
+                OR: [
+                    { clientId: userId },
+                    { trainerId: userId }
+                ]
+            },
+            orderBy: {
+                date: 'asc'
+            }
+        });
+
+        // Formatuj zwykłe sesje
+        const formattedGroupSessions = groupSessions.map(session => ({
             id: session.id,
             title: `${session.title} with ${session.trainer.firstName}`,
             date: session.date.toISOString().split('T')[0],
@@ -38,20 +87,58 @@ export const getTrainingSessions: RequestHandler = async (req, res): Promise<voi
             trainerId: session.trainerId,
             maxParticipants: session.maxParticipants,
             currentParticipants: session.participants.length,
-            isUserRegistered: session.participants.some(p => p.id === user?.id),
-            isRecurring: session.isRecurring
+            isUserRegistered: session.participants.some(p => p.id === userId),
+            isRecurring: session.isRecurring,
+            type: 'GROUP'
         }));
 
-        res.json(formattedSessions);
+        // Formatuj sesje personalne
+        const formattedPersonalSessions = personalSessions.map(session => {
+            const [hours, minutes] = session.time.split(':');
+            const endTime = new Date(session.date);
+            endTime.setHours(parseInt(hours), parseInt(minutes) + 60); // Dodaj 1 godzinę
+
+            return {
+                id: `p${session.id}`, // Prefiks 'p' dla rozróżnienia od zwykłych sesji
+                title: `Personal Training with ${session.trainer.firstName}`,
+                date: session.date.toISOString().split('T')[0],
+                start: `${session.date.toISOString().split('T')[0]}T${session.time}:00`,
+                end: `${session.date.toISOString().split('T')[0]}T${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}:00`,
+                trainerId: session.trainerId,
+                maxParticipants: 1,
+                currentParticipants: 1,
+                isUserRegistered: true,
+                isRecurring: false,
+                type: 'PERSONAL',
+                clientId: session.clientId,
+                status: session.status
+            };
+        });
+
+        // Połącz wszystkie sesje
+        const allSessions = [...formattedGroupSessions, ...formattedPersonalSessions];
+        res.json(allSessions);
+
     } catch (error) {
+        console.error('Error fetching sessions:', error);
         res.status(500).json({ error: "Failed to fetch sessions" });
     }
 };
 
-export const registerForSession: RequestHandler = async (req, res): Promise<void> => {
+export const registerForSession: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const { sessionId } = req.params;
-        const user = req.user as JwtUser;
 
         const session = await prisma.trainingSession.findUnique({
             where: { id: Number(sessionId) },
@@ -70,7 +157,7 @@ export const registerForSession: RequestHandler = async (req, res): Promise<void
             return;
         }
 
-        if (session.participants.some(p => p.id === user.id)) {
+        if (session.participants.some(p => p.id === userId)) {
             res.status(400).json({ error: "Already registered" });
             return;
         }
@@ -79,21 +166,32 @@ export const registerForSession: RequestHandler = async (req, res): Promise<void
             where: { id: Number(sessionId) },
             data: {
                 participants: {
-                    connect: { id: user.id }
+                    connect: { id: userId }
                 }
             }
         });
 
-        res.json({ message: "Successfully registered for session" });
+        res.status(200).json({ message: "Zarejestrowano na sesję" });
     } catch (error) {
+        console.error('Error registering for session:', error);
         res.status(500).json({ error: "Failed to register for session" });
     }
 };
 
-export const unregisterFromSession: RequestHandler = async (req, res): Promise<void> => {
+export const unregisterFromSession: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const { sessionId } = req.params;
-        const user = req.user as JwtUser;
 
         const session = await prisma.trainingSession.findUnique({
             where: { id: Number(sessionId) },
@@ -107,7 +205,7 @@ export const unregisterFromSession: RequestHandler = async (req, res): Promise<v
             return;
         }
 
-        if (!session.participants.some(p => p.id === user.id)) {
+        if (!session.participants.some(p => p.id === userId)) {
             res.status(400).json({ error: "Not registered for this session" });
             return;
         }
@@ -116,28 +214,39 @@ export const unregisterFromSession: RequestHandler = async (req, res): Promise<v
             where: { id: Number(sessionId) },
             data: {
                 participants: {
-                    disconnect: { id: user.id }
+                    disconnect: { id: userId }
                 }
             }
         });
 
-        res.json({ message: "Successfully unregistered from session" });
+        res.status(200).json({ message: "Wyrejestrowano z sesji" });
     } catch (error) {
+        console.error('Error unregistering from session:', error);
         res.status(500).json({ error: "Failed to unregister from session" });
     }
 };
 
-export const checkRegistrationStatus: RequestHandler = async (req, res): Promise<void> => {
+export const checkRegistrationStatus: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const { sessionId } = req.params;
-        const user = req.user as JwtUser;
 
         const session = await prisma.trainingSession.findUnique({
             where: { id: Number(sessionId) },
             include: {
                 participants: {
                     where: {
-                        id: user.id
+                        id: userId
                     }
                 }
             }
@@ -151,19 +260,30 @@ export const checkRegistrationStatus: RequestHandler = async (req, res): Promise
         const isRegistered = session.participants.length > 0;
         res.json({ isRegistered });
     } catch (error) {
+        console.error('Error checking registration status:', error);
         res.status(500).json({ error: "Failed to check registration status" });
     }
 };
 
-export const getSessionParticipants: RequestHandler = async (req, res): Promise<void> => {
+export const getSessionParticipants: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const trainerId = parseInt(req.user.id, 10);
+        if (isNaN(trainerId)) {
+            res.status(400).json({ error: "Invalid trainer ID" });
+            return;
+        }
+
         const { sessionId } = req.params;
-        const trainer = req.user as JwtUser;
 
         const session = await prisma.trainingSession.findUnique({
             where: {
                 id: Number(sessionId),
-                trainerId: trainer.id // Upewniamy się, że trener ma dostęp tylko do swoich sesji
+                trainerId: trainerId
             },
             include: {
                 participants: {
@@ -193,21 +313,30 @@ export const getSessionParticipants: RequestHandler = async (req, res): Promise<
             participants: session.participants
         });
     } catch (error) {
+        console.error('Error fetching session participants:', error);
         res.status(500).json({ error: "Failed to fetch participants" });
     }
 };
 
-// trainerController.ts
-
-export const removeParticipantFromSession: RequestHandler = async (req, res): Promise<void> => {
+export const removeParticipantFromSession: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const trainerId = parseInt(req.user.id, 10);
+        if (isNaN(trainerId)) {
+            res.status(400).json({ error: "Invalid trainer ID" });
+            return;
+        }
+
         const { sessionId, participantId } = req.params;
-        const user = req.user as JwtUser;
 
         console.log('removeParticipantFromSession called with:', {
             sessionId,
             participantId,
-            userId: user.id
+            trainerId
         });
 
         const session = await prisma.trainingSession.findUnique({
@@ -225,7 +354,7 @@ export const removeParticipantFromSession: RequestHandler = async (req, res): Pr
             return;
         }
 
-        if (session.trainerId !== user.id) {
+        if (session.trainerId !== trainerId) {
             console.log('Unauthorized - trainer mismatch');
             res.status(403).json({ error: "Unauthorized" });
             return;
@@ -250,7 +379,7 @@ export const removeParticipantFromSession: RequestHandler = async (req, res): Pr
         console.log('Participant removed successfully');
         res.json({ message: "Participant removed successfully" });
     } catch (error) {
-        console.error('Error in removeParticipantFromSession:', error);
+        console.error('Error removing participant from session:', error);
         res.status(500).json({ error: "Failed to remove participant from session" });
     }
 };

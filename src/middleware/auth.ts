@@ -1,13 +1,17 @@
-import { RequestHandler  } from 'express';
-import jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 
-interface JwtUser {
-    id: number;
+interface CustomJwtPayload extends JwtPayload {
+    id: string;
     email: string;
     role: 'USER' | 'TRAINER' | 'ADMIN';
 }
 
-export const requireAuth: RequestHandler = (req, res, next) => {
+interface CustomRequest extends Request {
+    user?: CustomJwtPayload;
+}
+
+export const requireAuth: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -17,18 +21,19 @@ export const requireAuth: RequestHandler = (req, res, next) => {
     }
 
     try {
-        const verified = jwt.verify(token, process.env.JWT_SECRET!);
-        req.user = verified;
+        const verified = jwt.verify(token, process.env.JWT_SECRET!) as CustomJwtPayload;
+        (req as CustomRequest).user = verified;
         next();
     } catch (error) {
         res.status(403).json({ error: "Invalid token" });
+        return;
     }
 };
 
-export const requireTrainerRole: RequestHandler = (req, res, next) => {
-    const user = req.user as JwtUser;
+export const requireTrainerRole: RequestHandler = (req: Request, res: Response, next: NextFunction): void => {
+    const user = (req as CustomRequest).user;
 
-    if (user.role !== 'TRAINER') {
+    if (!user || user.role !== 'TRAINER') {
         res.status(403).json({ error: "Trainer role required" });
         return;
     }

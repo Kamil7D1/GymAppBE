@@ -1,13 +1,15 @@
-// controllers/membershipController.ts
-import { RequestHandler } from 'express';
+import { Request, RequestHandler } from 'express';
 import { PrismaClient, MembershipType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface JwtUser {
-    id: number;
-    email: string;
-    role: string;
+// Rozszerzamy interfejs Request z Express
+interface RequestWithUser extends Request {
+    user?: {
+        id: string;
+        email?: string;
+        role?: string;
+    };
 }
 
 const MEMBERSHIP_PRICES = {
@@ -32,15 +34,25 @@ const calculateEndDate = (type: MembershipType, startDate: Date): Date => {
     return endDate;
 };
 
-export const purchaseMembership: RequestHandler = async (req, res): Promise<void> => {
+export const purchaseMembership: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const user = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
+
         const { type } = req.body as { type: MembershipType };
 
         // Sprawdź czy użytkownik nie ma już aktywnego karnetu
         const existingMembership = await prisma.membership.findFirst({
             where: {
-                userId: user.id,
+                userId: userId,
                 status: 'ACTIVE',
                 endDate: {
                     gt: new Date()
@@ -59,7 +71,7 @@ export const purchaseMembership: RequestHandler = async (req, res): Promise<void
 
         const membership = await prisma.membership.create({
             data: {
-                userId: user.id,
+                userId: userId,
                 type,
                 startDate,
                 endDate,
@@ -75,13 +87,22 @@ export const purchaseMembership: RequestHandler = async (req, res): Promise<void
     }
 };
 
-export const getCurrentMembership: RequestHandler = async (req, res): Promise<void> => {
+export const getCurrentMembership: RequestHandler = async (req: RequestWithUser, res): Promise<void> => {
     try {
-        const user = req.user as JwtUser;
+        if (!req.user) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const userId = parseInt(req.user.id, 10);
+        if (isNaN(userId)) {
+            res.status(400).json({ error: "Invalid user ID" });
+            return;
+        }
 
         const membership = await prisma.membership.findFirst({
             where: {
-                userId: user.id,
+                userId: userId,
                 status: 'ACTIVE',
                 endDate: {
                     gt: new Date()
